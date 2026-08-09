@@ -302,6 +302,10 @@ let derivedKey = null;
 let albumMeta = null;
 const decryptedUrls = [];
 const photoUrlCache = new Map();
+const photoUrlPromises = new Map();
+const decryptQueue = [];
+let activeDecrypts = 0;
+const MAX_ACTIVE_DECRYPTS = 3;
 const REMEMBER_DB = "our-story-device-key";
 const REMEMBER_STORE = "trusted-device";
 const REMEMBER_KEY = "album-key";
@@ -550,22 +554,48 @@ function photoAsset(item, kind) {
   return item;
 }
 
+function enqueueDecrypt(task) {
+  return new Promise((resolve, reject) => {
+    decryptQueue.push({ task, resolve, reject });
+    runDecryptQueue();
+  });
+}
+
+function runDecryptQueue() {
+  while (activeDecrypts < MAX_ACTIVE_DECRYPTS && decryptQueue.length) {
+    const item = decryptQueue.shift();
+    activeDecrypts += 1;
+    item.task()
+      .then(item.resolve, item.reject)
+      .finally(() => {
+        activeDecrypts -= 1;
+        runDecryptQueue();
+      });
+  }
+}
+
 async function decryptPhotoUrl(photo, kind = "full") {
   const cacheKey = `${photo.index}:${kind}`;
   if (photoUrlCache.has(cacheKey)) return photoUrlCache.get(cacheKey);
+  if (photoUrlPromises.has(cacheKey)) return photoUrlPromises.get(cacheKey);
 
   const asset = photoAsset(photo.encrypted, kind);
   if (!asset || !asset.path || !asset.nonce) return photo.src;
 
-  const response = await fetch(asset.path, { cache: "force-cache" });
-  if (!response.ok) throw new Error("PHOTO_NOT_FOUND");
+  const promise = enqueueDecrypt(async () => {
+    const response = await fetch(asset.path, { cache: "force-cache" });
+    if (!response.ok) throw new Error("PHOTO_NOT_FOUND");
 
-  const plain = await decryptPayload(await response.arrayBuffer(), asset.nonce, derivedKey);
-  const blob = new Blob([plain], { type: asset.mime || "image/jpeg" });
-  const url = URL.createObjectURL(blob);
-  decryptedUrls.push(url);
-  photoUrlCache.set(cacheKey, url);
-  return url;
+    const plain = await decryptPayload(await response.arrayBuffer(), asset.nonce, derivedKey);
+    const blob = new Blob([plain], { type: asset.mime || "image/jpeg" });
+    const url = URL.createObjectURL(blob);
+    decryptedUrls.push(url);
+    photoUrlCache.set(cacheKey, url);
+    return url;
+  }).finally(() => photoUrlPromises.delete(cacheKey));
+
+  photoUrlPromises.set(cacheKey, promise);
+  return promise;
 }
 
 async function hydrateImage(img, photo, kind = "thumb") {
@@ -768,6 +798,7 @@ function renderCollage() {
     img.alt = "";
     img.dataset.photoIndex = String(p.index - 1);
     img.dataset.kind = "thumb";
+    img.dataset.deferHydrate = "finale";
     img.style.setProperty("--tx", `${x}%`);
     img.style.setProperty("--ty", `${y}%`);
     img.style.setProperty("--sx", `${start.x}%`);
@@ -792,6 +823,7 @@ const galleryObserver = new IntersectionObserver(entries => {
     const img = e.target.matches("img[data-photo-index]")
       ? e.target
       : e.target.querySelector("img[data-photo-index]");
+    if (img?.dataset.deferHydrate === "finale") return;
     if (img) hydrateImage(img, photos[Number(img.dataset.photoIndex)], img.dataset.kind || "thumb");
   });
 }, { threshold: .06 });
@@ -800,8 +832,10 @@ const finaleObserver = new IntersectionObserver(entries => {
   entries.forEach(entry => {
     if (!entry.isIntersecting) return;
     els.collage.classList.add("assembled");
-    els.collage.querySelectorAll("img[data-photo-index]").forEach(img => {
-      hydrateImage(img, photos[Number(img.dataset.photoIndex)], "thumb");
+    els.collage.querySelectorAll("img[data-photo-index]").forEach((img, i) => {
+      setTimeout(() => {
+        hydrateImage(img, photos[Number(img.dataset.photoIndex)], "thumb");
+      }, Math.min(i * 95, 5200));
     });
   });
 }, { threshold: .34 });
