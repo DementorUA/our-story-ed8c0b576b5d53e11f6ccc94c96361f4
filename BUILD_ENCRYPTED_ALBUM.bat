@@ -11,4 +11,4 @@ if errorlevel 1 (
   echo Устанавливаю Pillow для сжатия фото...
   python -m pip install pillow
 )
-python BUILD_ENCRYPTED_ALBUM.py
+python tools\build_encrypted_album.py
