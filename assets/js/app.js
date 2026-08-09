@@ -657,6 +657,17 @@ async function loadEncryptedAlbum(password) {
   return { key, descriptor };
 }
 
+function unlockUi({ scroll = true, delay = 650 } = {}) {
+  setTimeout(() => {
+    document.body.classList.remove("locked");
+    els.lockScreen.classList.add("unlocked");
+    window.setTimeout(() => {
+      els.lockScreen.hidden = true;
+    }, 950);
+    if (scroll) document.querySelector(".intro").scrollIntoView({ behavior: "smooth" });
+  }, delay);
+}
+
 els.unlockForm.addEventListener("submit", async event => {
   event.preventDefault();
   const password = els.passwordInput.value;
@@ -681,11 +692,7 @@ els.unlockForm.addEventListener("submit", async event => {
     els.lockStatus.classList.add("success");
     sessionStorage.setItem("our-story-unlocked", "1");
 
-    setTimeout(() => {
-      document.body.classList.remove("locked");
-      els.lockScreen.classList.add("unlocked");
-      document.querySelector(".intro").scrollIntoView({ behavior: "smooth" });
-    }, 650);
+    unlockUi({ delay: 650 });
   } catch (error) {
     console.error(error);
     els.passwordInput.select();
@@ -715,11 +722,7 @@ async function tryRememberedUnlock() {
     await loadEncryptedAlbumWithKey(key, descriptor);
     els.lockStatus.textContent = "Устройство узнано. История открыта ♥";
     els.lockStatus.classList.add("success");
-    setTimeout(() => {
-      document.body.classList.remove("locked");
-      els.lockScreen.classList.add("unlocked");
-      document.querySelector(".intro").scrollIntoView({ behavior: "smooth" });
-    }, 520);
+    unlockUi({ delay: 520 });
   } catch (error) {
     console.warn("Remembered unlock failed", error);
     await clearRememberedKey();
@@ -902,6 +905,21 @@ document.getElementById("lightboxClose").onclick = closeLightbox;
 document.getElementById("lightboxPrev").onclick = () => moveLightbox(-1);
 document.getElementById("lightboxNext").onclick = () => moveLightbox(1);
 els.lightbox.addEventListener("click", e => { if (e.target === els.lightbox) closeLightbox(); });
+let lightboxTouchStartX = 0;
+let lightboxTouchStartY = 0;
+els.lightbox.addEventListener("touchstart", e => {
+  const touch = e.changedTouches[0];
+  lightboxTouchStartX = touch.clientX;
+  lightboxTouchStartY = touch.clientY;
+}, { passive: true });
+els.lightbox.addEventListener("touchend", e => {
+  const touch = e.changedTouches[0];
+  const dx = touch.clientX - lightboxTouchStartX;
+  const dy = touch.clientY - lightboxTouchStartY;
+  if (Math.abs(dx) > 54 && Math.abs(dx) > Math.abs(dy) * 1.35) {
+    moveLightbox(dx > 0 ? -1 : 1);
+  }
+}, { passive: true });
 document.addEventListener("keydown", e => {
   if (!els.lightbox.open) return;
   if (e.key === "Escape") closeLightbox();
