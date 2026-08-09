@@ -1,0 +1,5 @@
+Рекомендуемое имя репозитория:
+our-story-ed8c0b576b5d53e11f6ccc94c96361f4
+
+Ссылка будет выглядеть так:
+https://ВАШ-ЛОГИН.github.io/our-story-ed8c0b576b5d53e11f6ccc94c96361f4/

@@ -1,0 +1,8 @@
+PRIVATE_PHOTOS/*
+!PRIVATE_PHOTOS/PUT_YOUR_PHOTOS_HERE.txt
+*.tmp
+*.log
+*.bak
+Thumbs.db
+.DS_Store
+__pycache__/
