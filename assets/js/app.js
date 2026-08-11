@@ -67,6 +67,7 @@ const els = {
   lightbox: document.getElementById("lightbox"),
   lightboxImageWrap: document.querySelector(".lightbox-image-wrap"),
   lightboxImage: document.getElementById("lightboxImage"),
+  lightboxImageNext: document.getElementById("lightboxImageNext"),
   lightboxCaption: document.getElementById("lightboxCaption"),
   lightboxCounter: document.getElementById("lightboxCounter"),
   audio: document.getElementById("backgroundAudio"),
@@ -356,6 +357,25 @@ async function hydrateImage(img, photo, kind = "thumb") {
     img.dataset.loaded = "0";
   }
 }
+function preloadPhoto(photo, kind = "full") {
+  if (!derivedKey || !photo) return;
+  decryptPhotoUrl(photo, kind).catch(error => console.warn("Photo preload skipped", error));
+}
+function preloadLightboxNeighbors(index = currentIndex, radius = 2) {
+  if (!photos.length) return;
+  for (let offset = 1; offset <= radius; offset += 1) {
+    preloadPhoto(photos[(index + offset) % photos.length], "full");
+    preloadPhoto(photos[(index - offset + photos.length) % photos.length], "full");
+  }
+}
+function scheduleInitialFullPreload() {
+  const run = () => {
+    const total = Math.min(photos.length, 6);
+    for (let i = 0; i < total; i += 1) preloadPhoto(photos[i], "full");
+  };
+  if ("requestIdleCallback" in window) requestIdleCallback(run, { timeout: 3500 });
+  else setTimeout(run, 1200);
+}
 
 async function fetchAlbumDescriptor() {
   const descriptorResponse = await fetch("assets/encrypted/album.json", { cache: "no-store" });
@@ -488,6 +508,7 @@ function renderAll() {
   renderGallery();
   renderCollage();
   observeReveals();
+  scheduleInitialFullPreload();
 }
 
 function renderStory() {
@@ -521,6 +542,8 @@ function renderGallery() {
     card.setAttribute("aria-label", `Открыть фото ${i + 1}`);
     card.innerHTML = `<img loading="lazy" src="${p.src}" alt="${escapeHtml(p.name)}" data-photo-index="${i}" data-kind="thumb">`;
     card.addEventListener("click", () => openLightbox(i));
+    card.addEventListener("pointerenter", () => preloadPhoto(p, "full"), { passive: true });
+    card.addEventListener("focus", () => preloadPhoto(p, "full"));
     els.gallery.appendChild(card);
     galleryObserver.observe(card);
   });
@@ -633,6 +656,7 @@ async function openLightbox(index) {
   await updateLightbox();
   els.lightbox.showModal();
   document.body.style.overflow = "hidden";
+  preloadLightboxNeighbors(currentIndex, 3);
 }
 function prefersReducedMotion() {
   return matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -707,6 +731,14 @@ function resetLightboxDrag() {
   els.lightboxImage.style.transformOrigin = "";
   els.lightboxImage.style.opacity = "";
 }
+function resetLightboxNextLayer() {
+  els.lightboxImageNext.removeAttribute("src");
+  els.lightboxImageNext.alt = "";
+  els.lightboxImageNext.setAttribute("aria-hidden", "true");
+  els.lightboxImageNext.style.transform = "";
+  els.lightboxImageNext.style.opacity = "";
+  els.lightboxImageNext.style.filter = "";
+}
 async function updateLightbox(delta = 0) {
   const p = photos[currentIndex];
   const shouldAnimate = delta && els.lightbox.open && !prefersReducedMotion();
@@ -745,7 +777,6 @@ async function animateLightboxTurn(delta, dragOffset = 0) {
   const p = photos[currentIndex];
   const nextSrc = await decryptPhotoUrl(p, "full");
   els.lightboxImageWrap.querySelectorAll(".lightbox-page").forEach(image => image.remove());
-  const incoming = await decodeImage(nextSrc);
   const width = els.lightboxImageWrap.getBoundingClientRect().width || innerWidth;
   const direction = delta > 0 ? 1 : -1;
   const startX = Math.max(-width * .72, Math.min(width * .72, dragOffset || 0));
@@ -754,11 +785,16 @@ async function animateLightboxTurn(delta, dragOffset = 0) {
   const duration = Math.max(430, 920 - progress * 310);
   const easing = "cubic-bezier(.18,.82,.18,1)";
 
-  incoming.className = "lightbox-page lightbox-page-incoming";
-  incoming.alt = p.name;
-  incoming.style.transform = `translateX(${incomingStartX}px) scale(.98)`;
-  incoming.style.opacity = String(.36 + progress * .36);
-  els.lightboxImageWrap.appendChild(incoming);
+  els.lightboxImageNext.src = nextSrc;
+  els.lightboxImageNext.alt = p.name;
+  els.lightboxImageNext.setAttribute("aria-hidden", "false");
+  if (els.lightboxImageNext.decode) {
+    try { await els.lightboxImageNext.decode(); }
+    catch {}
+  }
+  els.lightboxImageNext.style.transform = `translateX(${incomingStartX}px) scale(.98)`;
+  els.lightboxImageNext.style.opacity = String(.36 + progress * .36);
+  els.lightboxImageNext.style.filter = "drop-shadow(0 14px 34px rgba(62,44,36,.12)) brightness(1.03)";
   els.lightboxImage.classList.add("lightbox-page-outgoing");
   els.lightbox.dataset.phase = "turning";
 
@@ -775,7 +811,7 @@ async function animateLightboxTurn(delta, dragOffset = 0) {
     }
   ], { duration, easing, fill: "forwards" });
 
-  const incomingAnimation = incoming.animate([
+  const incomingAnimation = els.lightboxImageNext.animate([
     {
       transform: `translateX(${incomingStartX}px) scale(.98)`,
       opacity: .36 + progress * .36,
@@ -814,6 +850,7 @@ async function animateLightboxTurn(delta, dragOffset = 0) {
     els.lightboxImage.style.filter = "";
     els.lightboxImage.style.transformOrigin = "";
     els.lightboxImageWrap.querySelectorAll(".lightbox-page").forEach(image => image.remove());
+    resetLightboxNextLayer();
     lightboxTouchDragging = false;
     lightboxTouchDx = 0;
     lightboxTouchDy = 0;
@@ -826,6 +863,7 @@ function closeLightbox() {
   document.body.style.overflow = "";
   resetLightboxDrag();
   els.lightboxImageWrap.querySelectorAll(".lightbox-page").forEach(image => image.remove());
+  resetLightboxNextLayer();
   els.lightboxImage.classList.remove("lightbox-page-outgoing");
   els.lightbox.removeAttribute("data-phase");
   els.lightbox.removeAttribute("data-direction");
@@ -842,6 +880,7 @@ async function moveLightbox(delta, dragOffset = 0) {
       resetLightboxDrag();
       await updateLightbox(delta);
     }
+    preloadLightboxNeighbors(currentIndex, 3);
   } finally {
     lightboxAnimating = false;
   }
@@ -855,6 +894,7 @@ let lightboxTouchStartY = 0;
 els.lightbox.addEventListener("touchstart", e => {
   if (lightboxAnimating) return;
   els.lightboxImageWrap.querySelectorAll(".lightbox-page").forEach(image => image.remove());
+  resetLightboxNextLayer();
   const touch = e.changedTouches[0];
   lightboxTouchStartX = touch.clientX;
   lightboxTouchStartY = touch.clientY;
