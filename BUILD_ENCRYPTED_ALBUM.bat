@@ -59,6 +59,14 @@ if not "%BUILD_EXIT%"=="0" (
   exit /b %BUILD_EXIT%
 )
 
+%PYTHON_CMD% tools\stamp_site_version.py
+if errorlevel 1 (
+  echo Site version stamp failed.
+  echo.
+  pause
+  exit /b 1
+)
+
 echo Build complete.
 echo.
 pause
