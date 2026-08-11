@@ -45,10 +45,6 @@ let lightboxAnimating = false;
 let lightboxTouchDx = 0;
 let lightboxTouchDy = 0;
 let lightboxTouchDragging = false;
-let lightboxTouchIncoming = null;
-let lightboxTouchIncomingDelta = 0;
-let lightboxTouchIncomingPendingDelta = 0;
-let lightboxTouchIncomingRequest = 0;
 let derivedKey = null;
 let albumMeta = null;
 const decryptedUrls = [];
@@ -691,58 +687,21 @@ async function decodeImage(src) {
   }
   return image;
 }
-function cleanupLightboxTouchIncoming(remove = true) {
-  lightboxTouchIncomingRequest++;
-  if (remove && lightboxTouchIncoming) lightboxTouchIncoming.remove();
-  lightboxTouchIncoming = null;
-  lightboxTouchIncomingDelta = 0;
-  lightboxTouchIncomingPendingDelta = 0;
-}
-async function prepareLightboxTouchIncoming(delta) {
-  if (!delta || photos.length < 2) return;
-  if (lightboxTouchIncoming && lightboxTouchIncomingDelta === delta) return;
-  if (lightboxTouchIncomingPendingDelta === delta) return;
-  cleanupLightboxTouchIncoming();
-  lightboxTouchIncomingPendingDelta = delta;
-  const request = lightboxTouchIncomingRequest;
-  const previewIndex = (currentIndex + delta + photos.length) % photos.length;
-  const preview = photos[previewIndex];
-  const src = await decryptPhotoUrl(preview, "full");
-  const incoming = await decodeImage(src);
-  if (request !== lightboxTouchIncomingRequest || !lightboxTouchDragging) return;
-  incoming.className = "lightbox-page lightbox-page-incoming";
-  incoming.alt = preview.name;
-  incoming.dataset.src = src;
-  incoming.dataset.index = String(previewIndex);
-  els.lightboxImageWrap.appendChild(incoming);
-  lightboxTouchIncoming = incoming;
-  lightboxTouchIncomingDelta = delta;
-  lightboxTouchIncomingPendingDelta = 0;
-  setLightboxDrag(lightboxTouchDx);
-}
 function setLightboxDrag(dx) {
   if (prefersReducedMotion()) return;
   const width = els.lightboxImageWrap.getBoundingClientRect().width || innerWidth;
   const limited = Math.max(-width * .72, Math.min(width * .72, dx));
   const progress = Math.min(1, Math.abs(limited) / (width * .72));
   const turn = Math.max(-18, Math.min(18, limited * .07));
-  const delta = limited < 0 ? 1 : -1;
   els.lightbox.dataset.dragging = "true";
   els.lightboxImage.style.transformOrigin = dx > 0 ? "left center" : "right center";
   els.lightboxImage.style.transform = `perspective(1200px) translateX(${limited}px) rotateY(${-turn}deg) scale(${1 - progress * .035})`;
   els.lightboxImage.style.opacity = String(1 - progress * .12);
-  if (Math.abs(limited) > 18) prepareLightboxTouchIncoming(delta);
-  if (lightboxTouchIncoming && lightboxTouchIncomingDelta === delta) {
-    const incomingX = delta * width + limited;
-    lightboxTouchIncoming.style.transform = `translateX(${incomingX}px) scale(.98)`;
-    lightboxTouchIncoming.style.opacity = String(.34 + progress * .48);
-  }
 }
 function resetLightboxDrag() {
   lightboxTouchDragging = false;
   lightboxTouchDx = 0;
   lightboxTouchDy = 0;
-  cleanupLightboxTouchIncoming();
   els.lightbox.removeAttribute("data-dragging");
   els.lightboxImage.style.transform = "";
   els.lightboxImage.style.transformOrigin = "";
@@ -782,17 +741,16 @@ async function updateLightbox(delta = 0) {
   els.lightbox.removeAttribute("data-phase");
   els.lightbox.removeAttribute("data-direction");
 }
-async function animateLightboxTurn(delta, dragOffset = 0, reusableIncoming = null) {
+async function animateLightboxTurn(delta, dragOffset = 0) {
   const p = photos[currentIndex];
   const nextSrc = await decryptPhotoUrl(p, "full");
-  const incoming = reusableIncoming || await decodeImage(nextSrc);
+  els.lightboxImageWrap.querySelectorAll(".lightbox-page").forEach(image => image.remove());
+  const incoming = await decodeImage(nextSrc);
   const width = els.lightboxImageWrap.getBoundingClientRect().width || innerWidth;
   const direction = delta > 0 ? 1 : -1;
   const startX = Math.max(-width * .72, Math.min(width * .72, dragOffset || 0));
   const progress = Math.min(.82, Math.abs(startX) / (width * .72));
-  const incomingStartX = reusableIncoming
-    ? direction * width + startX
-    : direction * width * (1.04 - progress * .58);
+  const incomingStartX = direction * width * (1.04 - progress * .58);
   const duration = Math.max(430, 920 - progress * 310);
   const easing = "cubic-bezier(.18,.82,.18,1)";
 
@@ -800,7 +758,7 @@ async function animateLightboxTurn(delta, dragOffset = 0, reusableIncoming = nul
   incoming.alt = p.name;
   incoming.style.transform = `translateX(${incomingStartX}px) scale(.98)`;
   incoming.style.opacity = String(.36 + progress * .36);
-  if (!incoming.parentNode) els.lightboxImageWrap.appendChild(incoming);
+  els.lightboxImageWrap.appendChild(incoming);
   els.lightboxImage.classList.add("lightbox-page-outgoing");
   els.lightbox.dataset.phase = "turning";
 
@@ -835,34 +793,33 @@ async function animateLightboxTurn(delta, dragOffset = 0, reusableIncoming = nul
     { opacity: 1, transform: "translateY(0)" }
   ], { duration, easing, fill: "both" });
 
-  await Promise.all([outgoing, incomingAnimation, captionAnimation].map(finishAnimation));
-  els.lightboxImage.src = nextSrc;
-  els.lightboxImage.alt = p.name;
-  if (els.lightboxImage.decode) {
-    try { await els.lightboxImage.decode(); }
-    catch {}
+  try {
+    await Promise.all([outgoing, incomingAnimation, captionAnimation].map(finishAnimation));
+    els.lightboxImage.src = nextSrc;
+    els.lightboxImage.alt = p.name;
+    if (els.lightboxImage.decode) {
+      try { await els.lightboxImage.decode(); }
+      catch {}
+    }
+    els.lightboxCaption.textContent = p.caption;
+    els.lightboxCounter.textContent = `${currentIndex + 1} / ${photos.length}`;
+    await nextPaint();
+  } finally {
+    outgoing.cancel();
+    incomingAnimation.cancel();
+    captionAnimation.cancel();
+    els.lightboxImage.classList.remove("lightbox-page-outgoing");
+    els.lightboxImage.style.transform = "";
+    els.lightboxImage.style.opacity = "";
+    els.lightboxImage.style.filter = "";
+    els.lightboxImage.style.transformOrigin = "";
+    els.lightboxImageWrap.querySelectorAll(".lightbox-page").forEach(image => image.remove());
+    lightboxTouchDragging = false;
+    lightboxTouchDx = 0;
+    lightboxTouchDy = 0;
+    els.lightbox.removeAttribute("data-dragging");
+    els.lightbox.removeAttribute("data-phase");
   }
-  els.lightboxCaption.textContent = p.caption;
-  els.lightboxCounter.textContent = `${currentIndex + 1} / ${photos.length}`;
-  els.lightboxImage.classList.remove("lightbox-page-outgoing");
-  els.lightboxImage.style.transform = "";
-  els.lightboxImage.style.opacity = "";
-  els.lightboxImage.style.filter = "";
-  els.lightboxImage.style.transformOrigin = "";
-  outgoing.cancel();
-  captionAnimation.cancel();
-  await nextPaint();
-  els.lightboxImageWrap.querySelectorAll(".lightbox-page").forEach(image => image.remove());
-  incomingAnimation.cancel();
-  lightboxTouchDragging = false;
-  lightboxTouchDx = 0;
-  lightboxTouchDy = 0;
-  lightboxTouchIncoming = null;
-  lightboxTouchIncomingDelta = 0;
-  lightboxTouchIncomingPendingDelta = 0;
-  lightboxTouchIncomingRequest++;
-  els.lightbox.removeAttribute("data-dragging");
-  els.lightbox.removeAttribute("data-phase");
 }
 function closeLightbox() {
   els.lightbox.close();
@@ -873,14 +830,14 @@ function closeLightbox() {
   els.lightbox.removeAttribute("data-phase");
   els.lightbox.removeAttribute("data-direction");
 }
-async function moveLightbox(delta, dragOffset = 0, reusableIncoming = null) {
+async function moveLightbox(delta, dragOffset = 0) {
   if (lightboxAnimating || photos.length < 2) return;
   lightboxAnimating = true;
   playLightboxFeedback(delta);
   currentIndex = (currentIndex + delta + photos.length) % photos.length;
   try {
     if (delta && els.lightbox.open && !prefersReducedMotion()) {
-      await animateLightboxTurn(delta, dragOffset, reusableIncoming);
+      await animateLightboxTurn(delta, dragOffset);
     } else {
       resetLightboxDrag();
       await updateLightbox(delta);
@@ -897,7 +854,6 @@ let lightboxTouchStartX = 0;
 let lightboxTouchStartY = 0;
 els.lightbox.addEventListener("touchstart", e => {
   if (lightboxAnimating) return;
-  cleanupLightboxTouchIncoming();
   els.lightboxImageWrap.querySelectorAll(".lightbox-page").forEach(image => image.remove());
   const touch = e.changedTouches[0];
   lightboxTouchStartX = touch.clientX;
@@ -923,12 +879,7 @@ els.lightbox.addEventListener("touchend", e => {
   const dy = lightboxTouchDy || touch.clientY - lightboxTouchStartY;
   if (Math.abs(dx) > 54 && Math.abs(dx) > Math.abs(dy) * 1.35) {
     const delta = dx > 0 ? -1 : 1;
-    const incoming = lightboxTouchIncomingDelta === delta ? lightboxTouchIncoming : null;
-    lightboxTouchIncomingRequest++;
-    lightboxTouchIncoming = null;
-    lightboxTouchIncomingDelta = 0;
-    lightboxTouchIncomingPendingDelta = 0;
-    moveLightbox(delta, dx, incoming);
+    moveLightbox(delta, dx);
   } else if (lightboxTouchDragging) {
     resetLightboxDrag();
   }
