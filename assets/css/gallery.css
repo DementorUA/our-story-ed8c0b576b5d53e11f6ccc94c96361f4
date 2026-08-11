@@ -1,0 +1,16 @@
+.gallery,
+.photo-card,
+.photo-card img {
+  min-width: 0;
+}
+
+.photo-card {
+  touch-action: manipulation;
+}
+
+@supports (content-visibility: auto) {
+  .photo-card {
+    content-visibility: auto;
+    contain-intrinsic-size: 320px 430px;
+  }
+}

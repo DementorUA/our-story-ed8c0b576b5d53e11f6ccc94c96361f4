@@ -1,7 +1,7 @@
 @echo off
 setlocal
 chcp 65001 >nul
-cd /d "%~dp0"
+cd /d "%~dp0..\.."
 
 set "PYTHON_CMD="
 where python >nul 2>nul
@@ -53,7 +53,7 @@ echo.
 
 if not "%BUILD_EXIT%"=="0" (
   echo Build failed with exit code %BUILD_EXIT%.
-  echo Check that your photos are in PRIVATE_PHOTOS and try again.
+  echo Check that your photos are in private\photos and try again.
   echo.
   pause
   exit /b %BUILD_EXIT%

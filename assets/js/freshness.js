@@ -1,11 +1,10 @@
 (function () {
-  const CURRENT_VERSION = "20260811-143742";
+  const CURRENT_VERSION = "20260811-151342";
   const VERSION_KEY = "our-story-site-version";
   const RELOAD_KEY = "our-story-site-reloaded-for-version";
 
-  function rootPath() {
-    const path = location.pathname;
-    return path.endsWith("/") ? path : path.replace(/[^/]*$/, "");
+  function assetUrl(path) {
+    return new URL(path, document.baseURI).href;
   }
 
   async function clearBrowserCaches() {
@@ -20,11 +19,43 @@
     }
   }
 
+  function showUpdateNotice(latestVersion) {
+    if (document.querySelector(".site-update-notice")) return;
+
+    const notice = document.createElement("div");
+    notice.className = "site-update-notice";
+    notice.setAttribute("role", "status");
+
+    const title = document.createElement("strong");
+    title.textContent = "Есть новая версия";
+
+    const text = document.createElement("p");
+    text.textContent = "Можно обновить сайт и сразу увидеть свежие изменения.";
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = "Обновить";
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      button.textContent = "Обновляю...";
+      await clearBrowserCaches();
+      localStorage.setItem(VERSION_KEY, latestVersion);
+      sessionStorage.setItem(RELOAD_KEY, latestVersion);
+
+      const freshUrl = new URL(location.href);
+      freshUrl.searchParams.set("v", latestVersion);
+      location.replace(freshUrl.href);
+    });
+
+    notice.append(title, text, button);
+    document.body.appendChild(notice);
+  }
+
   async function checkFreshVersion() {
     try {
       localStorage.setItem(VERSION_KEY, CURRENT_VERSION);
 
-      const url = `${rootPath()}assets/site-version.json?check=${Date.now()}`;
+      const url = assetUrl(`assets/site-version.json?check=${Date.now()}`);
       const response = await fetch(url, { cache: "no-store" });
       if (!response.ok) return;
 
@@ -35,13 +66,7 @@
       const alreadyReloadedFor = sessionStorage.getItem(RELOAD_KEY);
       if (alreadyReloadedFor === latestVersion) return;
 
-      await clearBrowserCaches();
-      localStorage.setItem(VERSION_KEY, latestVersion);
-      sessionStorage.setItem(RELOAD_KEY, latestVersion);
-
-      const freshUrl = new URL(location.href);
-      freshUrl.searchParams.set("v", latestVersion);
-      location.replace(freshUrl.href);
+      showUpdateNotice(latestVersion);
     } catch (error) {
       console.warn("Freshness check skipped", error);
     }

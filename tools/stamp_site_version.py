@@ -11,9 +11,10 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 VERSION = datetime.now().strftime("%Y%m%d-%H%M%S")
-HTML_FILES = (ROOT / "index.html",)
+HTML_FILES = (ROOT / "pages" / "index.html",)
 VERSION_FILE = ROOT / "assets" / "site-version.json"
 FRESHNESS_FILE = ROOT / "assets" / "js" / "freshness.js"
+CSS_ENTRY_FILE = ROOT / "assets" / "css" / "styles.css"
 
 
 def replace_versioned_asset(text: str, asset: str) -> str:
@@ -45,6 +46,18 @@ def main() -> None:
         ):
             text = replace_versioned_asset(text, asset)
         html_file.write_text(text, encoding="utf-8")
+
+    css_entry = CSS_ENTRY_FILE.read_text(encoding="utf-8")
+    for asset in (
+        "./base.css",
+        "./layout.css",
+        "./lock.css",
+        "./gallery.css",
+        "./lightbox.css",
+        "./responsive.css",
+    ):
+        css_entry = replace_versioned_asset(css_entry, asset)
+    CSS_ENTRY_FILE.write_text(css_entry, encoding="utf-8")
 
     print(f"Stamped site version: {VERSION}")
 

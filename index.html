@@ -1,147 +1,19 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#f8f4f0" />
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-  <meta http-equiv="Pragma" content="no-cache" />
-  <meta http-equiv="Expires" content="0" />
-  <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex" />
-  <meta name="referrer" content="no-referrer" />
-  <meta http-equiv="Permissions-Policy" content="camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self'; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests" />
-  <title>Our Story — Interactive Love Gallery</title>
-  <link rel="icon" href="favicon.ico" sizes="any" />
-  <link rel="icon" type="image/png" sizes="32x32" href="assets/icons/favicon-32.png" />
-  <link rel="apple-touch-icon" sizes="180x180" href="assets/icons/favicon-180.png" />
-  <script defer src="assets/js/freshness.js?v=20260811-143742"></script>
-  <link rel="stylesheet" href="assets/css/styles.css?v=20260811-143742" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow,noarchive,nosnippet,noimageindex">
+  <meta http-equiv="refresh" content="0; url=pages/index.html">
+  <title>Our Story</title>
+  <script>
+    const target = new URL("pages/index.html", location.href);
+    target.search = location.search;
+    target.hash = location.hash;
+    location.replace(target);
+  </script>
 </head>
-<body class="locked">
-
-  <section class="lock-screen" id="lockScreen" aria-label="Закрытый альбом">
-    <div class="lock-aurora"></div>
-    <div class="lock-card glass">
-      <div class="lock-icon">✦</div>
-      <p class="eyebrow">Private encrypted album</p>
-      <h2>Эта история существует только для нас</h2>
-      <p>Введи секретную фразу.</p>
-      <form id="unlockForm" class="unlock-form">
-        <input id="passwordInput" type="password" autocomplete="current-password"
-               placeholder="Секретная фраза" required>
-        <label class="remember-device">
-          <input id="rememberDeviceInput" type="checkbox" checked>
-          <span>Запомнить этот браузер</span>
-        </label>
-        <button class="primary-button" type="submit">Открыть историю</button>
-      </form>
-      <p class="lock-status" id="lockStatus">Ожидаю секретную фразу…</p>
-      <details>
-        <summary>Как устроена защита</summary>
-        <p>Манифест и каждая фотография зашифрованы AES‑256‑GCM. Ключ создаётся из секретной фразы через PBKDF2‑SHA‑256.</p>
-      </details>
-    </div>
-  </section>
-
-  <canvas id="lightCanvas" aria-hidden="true"></canvas>
-  <div class="cursor-glow" id="cursorGlow" aria-hidden="true"></div>
-  <div class="scroll-progress" id="scrollProgress"></div>
-
-  <aside class="floating-tools glass">
-    <button id="soundToggle" class="tool-button" aria-label="Музыка">♫</button>
-    <button id="effectsToggle" class="tool-button active" aria-label="Эффекты">✦</button>
-  </aside>
-<audio id="backgroundAudio" loop preload="none">
-    <source src="assets/audio/our-song.mp3" type="audio/mpeg">
-  </audio>
-
-  <header class="hero" id="hero">
-    <div class="hero-orb orb-a"></div>
-    <div class="hero-orb orb-b"></div>
-    <div class="hero-lines"></div>
-    <div class="hero-content reveal visible">
-      <p class="eyebrow">A private collection of light</p>
-      <h1 data-split>Our Story</h1>
-      <p class="subtitle" id="heroSubtitle">Зашифрованная история, существующая только для тех, кому доверили ссылку и секретную фразу.</p>
-      <div class="hero-actions">
-        <button class="primary-button magnetic" id="beginButton">Начать путешествие</button>
-      </div>
-      <p class="microcopy">Фотографии защищены AES‑256‑GCM и расшифровываются только в памяти браузера.</p>
-    </div>
-    <div class="scroll-hint"><span></span></div>
-  </header>
-
-  <main>
-    <section class="intro section-shell reveal">
-      <p class="section-kicker">Chapter I</p>
-      <h2>Воспоминания, в которых живёт свет</h2>
-      <p class="intro-copy">В этой галерее собраны моменты, которые навсегда останутся частью нашей истории</p>
-      <div class="stats glass">
-        <div><strong id="photoCount">24</strong><span>момента</span></div>
-        <div><strong id="favoriteCount">0</strong><span>любимых</span></div>
-        <div><strong>1</strong><span>история</span></div>
-      </div>
-    </section>
-
-    <section class="cinematic-story" id="featuredStory"></section>
-
-    <section class="quote-break reveal">
-      <div class="quote-glow"></div>
-      <blockquote>Некоторые мгновения проходят. Другие остаются жить внутри нас.</blockquote>
-    </section>
-
-    <section class="gallery-section section-shell" id="gallerySection">
-      <div class="section-heading reveal">
-        <div>
-          <p class="section-kicker">All moments</p>
-          <h2>Галерея</h2>
-        </div>
-        <div class="gallery-controls glass">
-          <button class="view-button active" data-view="masonry">Свободно</button>
-          <button class="view-button" data-view="grid">Сетка</button>
-          <button class="view-button" data-view="film">Плёнка</button>
-        </div>
-      </div>
-      <div class="gallery masonry" id="galleryGrid"></div>
-    </section>
-
-    <section class="memory-cloud reveal">
-      <div class="memory-cloud-inner glass">
-        <span>нежность</span><span>свет</span><span>смех</span><span>тишина</span><span>вместе</span><span>навсегда</span>
-      </div>
-    </section>
-
-    <section class="finale">
-      <div class="finale-collage" id="finaleCollage"></div>
-      <div class="finale-overlay"></div>
-      <div class="finale-content reveal">
-        <p class="section-kicker">The end?</p>
-        <h2>No. Just the beginning.</h2>
-        <div class="finale-actions">
-          <button class="primary-button magnetic" id="restartButton">Посмотреть снова</button>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <dialog class="lightbox" id="lightbox">
-    <div class="lightbox-ambient" id="lightboxAmbient"></div>
-    <button class="lightbox-close glass" id="lightboxClose" aria-label="Закрыть">×</button>
-    <button class="lightbox-nav prev glass" id="lightboxPrev" aria-label="Предыдущее фото">←</button>
-    <figure class="lightbox-figure">
-      <div class="lightbox-image-wrap">
-        <img id="lightboxImage" alt="" />
-        <img id="lightboxImageNext" alt="" aria-hidden="true" />
-      </div>
-      <figcaption>
-        <span id="lightboxCaption"></span>
-        <span id="lightboxCounter"></span>
-      </figcaption>
-    </figure>
-    <button class="lightbox-nav next glass" id="lightboxNext" aria-label="Следующее фото">→</button>
-  </dialog>
-  <div id="toast" class="toast glass"></div>
-  <script src="assets/js/app.js?v=20260811-143742"></script>
+<body>
+  <a href="pages/index.html">Открыть Our Story</a>
 </body>
 </html>

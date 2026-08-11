@@ -1,0 +1,13 @@
+.lock-screen {
+  overscroll-behavior: contain;
+}
+
+.lock-card,
+.unlock-form,
+.unlock-form input {
+  min-width: 0;
+}
+
+.remember-device {
+  touch-action: manipulation;
+}

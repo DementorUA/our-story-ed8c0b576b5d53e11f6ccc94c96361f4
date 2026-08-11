@@ -1,4 +1,5 @@
 PRIVATE_PHOTOS/
+private/
 .codex-remote-attachments/
 *.tmp
 *.log
@@ -6,3 +7,4 @@ PRIVATE_PHOTOS/
 Thumbs.db
 .DS_Store
 __pycache__/
+.cache/

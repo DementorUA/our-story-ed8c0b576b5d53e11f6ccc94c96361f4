@@ -3,7 +3,7 @@
 Build an AES-256-GCM encrypted photo album for the static GitHub Pages site.
 
 Default layout:
-  PRIVATE_PHOTOS/                 source photos, never publish
+  private/photos/                 source photos, never publish
   assets/encrypted/album.json      public encrypted album descriptor
   assets/encrypted/manifest.enc    encrypted manifest
   assets/encrypted/photos/*.enc    encrypted optimized photos and thumbnails
@@ -39,7 +39,7 @@ except ImportError:
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_PHOTOS = PROJECT_ROOT / "PRIVATE_PHOTOS"
+DEFAULT_PHOTOS = PROJECT_ROOT / "private" / "photos"
 DEFAULT_OUT = PROJECT_ROOT / "assets" / "encrypted"
 
 ITERATIONS = 600_000

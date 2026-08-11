@@ -1,4 +1,6 @@
 
+import { decodeImage, finishAnimation, nextPaint, wait } from "./lightbox-utils.js";
+
 const DEFAULT_STORY_TEXTS = {
   titles: [
     "Тот самый свет",
@@ -68,6 +70,8 @@ const els = {
   lightboxImageWrap: document.querySelector(".lightbox-image-wrap"),
   lightboxImage: document.getElementById("lightboxImage"),
   lightboxImageNext: document.getElementById("lightboxImageNext"),
+  lightboxLoader: document.getElementById("lightboxLoader"),
+  lightboxRail: document.getElementById("lightboxRail"),
   lightboxCaption: document.getElementById("lightboxCaption"),
   lightboxCounter: document.getElementById("lightboxCounter"),
   audio: document.getElementById("backgroundAudio"),
@@ -467,9 +471,9 @@ els.unlockForm.addEventListener("submit", async event => {
     els.lockStatus.classList.add("error");
 
     if (error.message === "ALBUM_NOT_BUILT") {
-      els.lockStatus.textContent = "Сначала запустите BUILD_ENCRYPTED_ALBUM.bat и загрузите созданные файлы на GitHub.";
+      els.lockStatus.textContent = "Сначала запустите scripts/windows/BUILD_ENCRYPTED_ALBUM.bat и загрузите созданные файлы на GitHub.";
     } else {
-      window.location.assign("wrong-password.html");
+      window.location.assign("pages/wrong-password.html");
     }
   } finally {
     els.lockScreen.classList.remove("decrypting");
@@ -653,22 +657,14 @@ document.querySelectorAll(".view-button").forEach(button => {
 
 async function openLightbox(index) {
   currentIndex = index;
-  await updateLightbox();
+  renderLightboxRail();
   els.lightbox.showModal();
   document.body.style.overflow = "hidden";
+  await updateLightbox();
   preloadLightboxNeighbors(currentIndex, 3);
 }
 function prefersReducedMotion() {
   return matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
-function wait(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-function nextPaint() {
-  return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-}
-function finishAnimation(animation) {
-  return animation.finished.catch(() => {});
 }
 function playLightboxFeedback(delta) {
   if (navigator.vibrate) navigator.vibrate(12);
@@ -699,17 +695,79 @@ function setLightboxPhase(phase, delta = 0) {
   els.lightbox.dataset.phase = phase;
   els.lightbox.dataset.direction = delta > 0 ? "next" : "prev";
 }
-async function decodeImage(src) {
-  const image = new Image();
-  image.decoding = "async";
-  image.src = src;
-  if (image.decode) {
-    try { await image.decode(); }
-    catch { await new Promise(resolve => { image.onload = image.onerror = resolve; }); }
-  } else {
-    await new Promise(resolve => { image.onload = image.onerror = resolve; });
+function setLightboxLoading(isLoading) {
+  els.lightbox.classList.toggle("loading", Boolean(isLoading));
+  if (els.lightboxLoader) {
+    els.lightboxLoader.setAttribute("aria-hidden", isLoading ? "false" : "true");
   }
-  return image;
+}
+async function getDecodedLightboxSrc(photo) {
+  setLightboxLoading(true);
+  try {
+    const src = await decryptPhotoUrl(photo, "full");
+    await decodeImage(src);
+    return src;
+  } finally {
+    setLightboxLoading(false);
+  }
+}
+function updateLightboxRailActive() {
+  if (!els.lightboxRail) return;
+  const active = els.lightboxRail.querySelector(".lightbox-thumb.active");
+  if (active) active.classList.remove("active");
+  const nextActive = els.lightboxRail.querySelector(`[data-index="${currentIndex}"]`);
+  if (!nextActive) return;
+  nextActive.classList.add("active");
+  nextActive.scrollIntoView({ block: "nearest", inline: "center", behavior: prefersReducedMotion() ? "auto" : "smooth" });
+}
+function renderLightboxRail() {
+  if (!els.lightboxRail || els.lightboxRail.dataset.count === String(photos.length)) {
+    updateLightboxRailActive();
+    return;
+  }
+  els.lightboxRail.replaceChildren();
+  photos.forEach((photo, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "lightbox-thumb";
+    button.dataset.index = String(index);
+    button.setAttribute("aria-label", `Открыть фото ${index + 1}`);
+    const img = document.createElement("img");
+    img.alt = "";
+    img.loading = "lazy";
+    img.decoding = "async";
+    img.src = photo.src;
+    button.appendChild(img);
+    button.addEventListener("click", () => jumpLightbox(index));
+    els.lightboxRail.appendChild(button);
+  });
+  els.lightboxRail.dataset.count = String(photos.length);
+  updateLightboxRailActive();
+}
+function hydrateLightboxRailWindow(center = currentIndex, radius = 7) {
+  if (!els.lightboxRail || !photos.length) return;
+  for (let offset = -radius; offset <= radius; offset += 1) {
+    const index = (center + offset + photos.length) % photos.length;
+    const img = els.lightboxRail.querySelector(`[data-index="${index}"] img`);
+    if (img) hydrateImage(img, photos[index], "thumb");
+  }
+}
+async function jumpLightbox(index) {
+  if (lightboxAnimating || index === currentIndex || !photos[index]) return;
+  const delta = index > currentIndex ? 1 : -1;
+  currentIndex = index;
+  lightboxAnimating = true;
+  playLightboxFeedback(delta);
+  try {
+    if (els.lightbox.open && !prefersReducedMotion()) {
+      await animateLightboxTurn(delta, 0);
+    } else {
+      await updateLightbox();
+    }
+    preloadLightboxNeighbors(currentIndex, 3);
+  } finally {
+    lightboxAnimating = false;
+  }
 }
 function setLightboxDrag(dx) {
   if (prefersReducedMotion()) return;
@@ -742,13 +800,15 @@ function resetLightboxNextLayer() {
 async function updateLightbox(delta = 0) {
   const p = photos[currentIndex];
   const shouldAnimate = delta && els.lightbox.open && !prefersReducedMotion();
-  const nextSrc = await decryptPhotoUrl(p, "full");
+  const nextSrc = await getDecodedLightboxSrc(p);
 
   if (!shouldAnimate) {
     els.lightboxImage.src = nextSrc;
     els.lightboxImage.alt = p.name;
     els.lightboxCaption.textContent = p.caption;
     els.lightboxCounter.textContent = `${currentIndex + 1} / ${photos.length}`;
+    updateLightboxRailActive();
+    hydrateLightboxRailWindow();
     return;
   }
 
@@ -767,6 +827,8 @@ async function updateLightbox(delta = 0) {
   }
   els.lightboxCaption.textContent = p.caption;
   els.lightboxCounter.textContent = `${currentIndex + 1} / ${photos.length}`;
+  updateLightboxRailActive();
+  hydrateLightboxRailWindow();
   els.lightboxImage.classList.remove("lightbox-page-outgoing");
   await nextPaint();
   incoming.remove();
@@ -775,7 +837,7 @@ async function updateLightbox(delta = 0) {
 }
 async function animateLightboxTurn(delta, dragOffset = 0) {
   const p = photos[currentIndex];
-  const nextSrc = await decryptPhotoUrl(p, "full");
+  const nextSrc = await getDecodedLightboxSrc(p);
   els.lightboxImageWrap.querySelectorAll(".lightbox-page").forEach(image => image.remove());
   const width = els.lightboxImageWrap.getBoundingClientRect().width || innerWidth;
   const direction = delta > 0 ? 1 : -1;
@@ -839,6 +901,8 @@ async function animateLightboxTurn(delta, dragOffset = 0) {
     }
     els.lightboxCaption.textContent = p.caption;
     els.lightboxCounter.textContent = `${currentIndex + 1} / ${photos.length}`;
+    updateLightboxRailActive();
+    hydrateLightboxRailWindow();
     await nextPaint();
   } finally {
     outgoing.cancel();

@@ -1,0 +1,21 @@
+.section-shell,
+.hero-content,
+.finale-content {
+  min-width: 0;
+}
+
+.cinematic-story,
+.gallery-section,
+.memory-cloud,
+.finale {
+  overflow-x: clip;
+}
+
+@supports (content-visibility: auto) {
+  .cinematic-story,
+  .gallery-section,
+  .memory-cloud {
+    content-visibility: auto;
+    contain-intrinsic-size: 900px;
+  }
+}
