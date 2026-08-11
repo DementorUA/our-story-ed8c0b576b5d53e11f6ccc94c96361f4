@@ -65,6 +65,7 @@ const els = {
   favoriteCount: document.getElementById("favoriteCount"),
   heroSubtitle: document.getElementById("heroSubtitle"),
   lightbox: document.getElementById("lightbox"),
+  lightboxImageWrap: document.querySelector(".lightbox-image-wrap"),
   lightboxImage: document.getElementById("lightboxImage"),
   lightboxCaption: document.getElementById("lightboxCaption"),
   lightboxCounter: document.getElementById("lightboxCounter"),
@@ -668,13 +669,27 @@ function setLightboxPhase(phase, delta = 0) {
   els.lightbox.dataset.phase = phase;
   els.lightbox.dataset.direction = delta > 0 ? "next" : "prev";
 }
+async function decodeImage(src) {
+  const image = new Image();
+  image.decoding = "async";
+  image.src = src;
+  if (image.decode) {
+    try { await image.decode(); }
+    catch { await new Promise(resolve => { image.onload = image.onerror = resolve; }); }
+  } else {
+    await new Promise(resolve => { image.onload = image.onerror = resolve; });
+  }
+  return image;
+}
 function setLightboxDrag(dx) {
   if (prefersReducedMotion()) return;
-  const limited = Math.max(-120, Math.min(120, dx));
-  const progress = Math.min(1, Math.abs(limited) / 120);
+  const limited = Math.max(-220, Math.min(220, dx));
+  const progress = Math.min(1, Math.abs(limited) / 220);
+  const turn = Math.max(-18, Math.min(18, limited * .07));
   els.lightbox.dataset.dragging = "true";
-  els.lightboxImage.style.transform = `translateX(${limited}px) rotate(${limited * .018}deg) scale(${1 - progress * .025})`;
-  els.lightboxImage.style.opacity = String(1 - progress * .18);
+  els.lightboxImage.style.transformOrigin = dx > 0 ? "left center" : "right center";
+  els.lightboxImage.style.transform = `perspective(1200px) translateX(${limited}px) rotateY(${-turn}deg) scale(${1 - progress * .035})`;
+  els.lightboxImage.style.opacity = String(1 - progress * .12);
 }
 function resetLightboxDrag() {
   lightboxTouchDragging = false;
@@ -682,33 +697,45 @@ function resetLightboxDrag() {
   lightboxTouchDy = 0;
   els.lightbox.removeAttribute("data-dragging");
   els.lightboxImage.style.transform = "";
+  els.lightboxImage.style.transformOrigin = "";
   els.lightboxImage.style.opacity = "";
 }
 async function updateLightbox(delta = 0) {
   const p = photos[currentIndex];
   const shouldAnimate = delta && els.lightbox.open && !prefersReducedMotion();
+  const nextSrc = await decryptPhotoUrl(p, "full");
 
-  if (shouldAnimate) {
-    setLightboxPhase("out", delta);
-    await wait(150);
+  if (!shouldAnimate) {
+    els.lightboxImage.src = nextSrc;
+    els.lightboxImage.alt = p.name;
+    els.lightboxCaption.textContent = p.caption;
+    els.lightboxCounter.textContent = `${currentIndex + 1} / ${photos.length}`;
+    return;
   }
 
-  els.lightboxImage.src = await decryptPhotoUrl(p, "full");
+  const incoming = await decodeImage(nextSrc);
+  incoming.className = "lightbox-page lightbox-page-incoming";
+  incoming.alt = p.name;
+  els.lightboxImageWrap.appendChild(incoming);
+  els.lightboxImage.classList.add("lightbox-page-outgoing");
+  setLightboxPhase("turn", delta);
+  await wait(820);
+  els.lightboxImage.src = nextSrc;
   els.lightboxImage.alt = p.name;
   els.lightboxCaption.textContent = p.caption;
   els.lightboxCounter.textContent = `${currentIndex + 1} / ${photos.length}`;
-
-  if (shouldAnimate) {
-    setLightboxPhase("in", delta);
-    await wait(360);
-    els.lightbox.removeAttribute("data-phase");
-    els.lightbox.removeAttribute("data-direction");
-  }
+  await wait(40);
+  incoming.remove();
+  els.lightboxImage.classList.remove("lightbox-page-outgoing");
+  els.lightbox.removeAttribute("data-phase");
+  els.lightbox.removeAttribute("data-direction");
 }
 function closeLightbox() {
   els.lightbox.close();
   document.body.style.overflow = "";
   resetLightboxDrag();
+  els.lightboxImageWrap.querySelectorAll(".lightbox-page").forEach(image => image.remove());
+  els.lightboxImage.classList.remove("lightbox-page-outgoing");
   els.lightbox.removeAttribute("data-phase");
   els.lightbox.removeAttribute("data-direction");
 }
