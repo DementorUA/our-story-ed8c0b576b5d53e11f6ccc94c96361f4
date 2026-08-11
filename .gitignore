@@ -1,5 +1,5 @@
-PRIVATE_PHOTOS/*
-!PRIVATE_PHOTOS/PUT_YOUR_PHOTOS_HERE.txt
+PRIVATE_PHOTOS/
+.codex-remote-attachments/
 *.tmp
 *.log
 *.bak

@@ -1,11 +1,11 @@
 {
-  "version": 1,
+  "version": 2,
   "algorithm": "AES-256-GCM",
   "kdf": "PBKDF2-SHA-256",
-  "iterations": 310000,
-  "salt": "Do/jQXZ938kdi1qlBnsZCw==",
+  "iterations": 600000,
+  "salt": "1coMoZ4S47tIbe7Ronm3Cg==",
   "manifest": {
     "path": "assets/encrypted/manifest.enc",
-    "nonce": "oRSxrHe1Z+94YfxW"
+    "nonce": "DiMp4MvSZMmQrkL9"
   }
 }
