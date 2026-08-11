@@ -852,7 +852,7 @@ async function animateLightboxTurn(delta, dragOffset = 0, reusableIncoming = nul
   outgoing.cancel();
   captionAnimation.cancel();
   await nextPaint();
-  incoming.remove();
+  els.lightboxImageWrap.querySelectorAll(".lightbox-page").forEach(image => image.remove());
   incomingAnimation.cancel();
   lightboxTouchDragging = false;
   lightboxTouchDx = 0;
@@ -860,6 +860,7 @@ async function animateLightboxTurn(delta, dragOffset = 0, reusableIncoming = nul
   lightboxTouchIncoming = null;
   lightboxTouchIncomingDelta = 0;
   lightboxTouchIncomingPendingDelta = 0;
+  lightboxTouchIncomingRequest++;
   els.lightbox.removeAttribute("data-dragging");
   els.lightbox.removeAttribute("data-phase");
 }
@@ -896,6 +897,8 @@ let lightboxTouchStartX = 0;
 let lightboxTouchStartY = 0;
 els.lightbox.addEventListener("touchstart", e => {
   if (lightboxAnimating) return;
+  cleanupLightboxTouchIncoming();
+  els.lightboxImageWrap.querySelectorAll(".lightbox-page").forEach(image => image.remove());
   const touch = e.changedTouches[0];
   lightboxTouchStartX = touch.clientX;
   lightboxTouchStartY = touch.clientY;
@@ -921,12 +924,10 @@ els.lightbox.addEventListener("touchend", e => {
   if (Math.abs(dx) > 54 && Math.abs(dx) > Math.abs(dy) * 1.35) {
     const delta = dx > 0 ? -1 : 1;
     const incoming = lightboxTouchIncomingDelta === delta ? lightboxTouchIncoming : null;
-    if (incoming) {
-      lightboxTouchIncoming = null;
-      lightboxTouchIncomingDelta = 0;
-      lightboxTouchIncomingPendingDelta = 0;
-      lightboxTouchIncomingRequest++;
-    }
+    lightboxTouchIncomingRequest++;
+    lightboxTouchIncoming = null;
+    lightboxTouchIncomingDelta = 0;
+    lightboxTouchIncomingPendingDelta = 0;
     moveLightbox(delta, dx, incoming);
   } else if (lightboxTouchDragging) {
     resetLightboxDrag();
