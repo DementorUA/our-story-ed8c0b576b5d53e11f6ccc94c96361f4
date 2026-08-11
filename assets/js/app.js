@@ -800,16 +800,16 @@ async function animateLightboxTurn(delta, dragOffset = 0) {
   }
   els.lightboxCaption.textContent = p.caption;
   els.lightboxCounter.textContent = `${currentIndex + 1} / ${photos.length}`;
-  outgoing.cancel();
-  incomingAnimation.cancel();
-  captionAnimation.cancel();
   els.lightboxImage.classList.remove("lightbox-page-outgoing");
   els.lightboxImage.style.transform = "";
   els.lightboxImage.style.opacity = "";
   els.lightboxImage.style.filter = "";
   els.lightboxImage.style.transformOrigin = "";
+  outgoing.cancel();
+  captionAnimation.cancel();
   await nextPaint();
   incoming.remove();
+  incomingAnimation.cancel();
   resetLightboxDrag();
   els.lightbox.removeAttribute("data-phase");
 }
