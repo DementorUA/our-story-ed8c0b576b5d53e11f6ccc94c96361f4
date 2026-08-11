@@ -40,6 +40,11 @@ let photos = [];
 let currentIndex = 0;
 let effectsEnabled = true;
 let soundOn = false;
+let navAudioContext = null;
+let lightboxAnimating = false;
+let lightboxTouchDx = 0;
+let lightboxTouchDy = 0;
+let lightboxTouchDragging = false;
 let derivedKey = null;
 let albumMeta = null;
 const decryptedUrls = [];
@@ -628,20 +633,96 @@ async function openLightbox(index) {
   els.lightbox.showModal();
   document.body.style.overflow = "hidden";
 }
-async function updateLightbox() {
+function prefersReducedMotion() {
+  return matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+function playLightboxFeedback(delta) {
+  if (navigator.vibrate) navigator.vibrate(12);
+  if (prefersReducedMotion()) return;
+
+  try {
+    const AudioCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtor) return;
+    navAudioContext ||= new AudioCtor();
+    if (navAudioContext.state === "suspended") navAudioContext.resume();
+    const now = navAudioContext.currentTime;
+    const oscillator = navAudioContext.createOscillator();
+    const gain = navAudioContext.createGain();
+    oscillator.type = "sine";
+    oscillator.frequency.setValueAtTime(delta > 0 ? 520 : 440, now);
+    oscillator.frequency.exponentialRampToValueAtTime(delta > 0 ? 660 : 360, now + .06);
+    gain.gain.setValueAtTime(.0001, now);
+    gain.gain.exponentialRampToValueAtTime(.026, now + .012);
+    gain.gain.exponentialRampToValueAtTime(.0001, now + .09);
+    oscillator.connect(gain).connect(navAudioContext.destination);
+    oscillator.start(now);
+    oscillator.stop(now + .1);
+  } catch {
+    navAudioContext = null;
+  }
+}
+function setLightboxPhase(phase, delta = 0) {
+  els.lightbox.dataset.phase = phase;
+  els.lightbox.dataset.direction = delta > 0 ? "next" : "prev";
+}
+function setLightboxDrag(dx) {
+  if (prefersReducedMotion()) return;
+  const limited = Math.max(-120, Math.min(120, dx));
+  const progress = Math.min(1, Math.abs(limited) / 120);
+  els.lightbox.dataset.dragging = "true";
+  els.lightboxImage.style.transform = `translateX(${limited}px) rotate(${limited * .018}deg) scale(${1 - progress * .025})`;
+  els.lightboxImage.style.opacity = String(1 - progress * .18);
+}
+function resetLightboxDrag() {
+  lightboxTouchDragging = false;
+  lightboxTouchDx = 0;
+  lightboxTouchDy = 0;
+  els.lightbox.removeAttribute("data-dragging");
+  els.lightboxImage.style.transform = "";
+  els.lightboxImage.style.opacity = "";
+}
+async function updateLightbox(delta = 0) {
   const p = photos[currentIndex];
+  const shouldAnimate = delta && els.lightbox.open && !prefersReducedMotion();
+
+  if (shouldAnimate) {
+    setLightboxPhase("out", delta);
+    await wait(150);
+  }
+
   els.lightboxImage.src = await decryptPhotoUrl(p, "full");
   els.lightboxImage.alt = p.name;
   els.lightboxCaption.textContent = p.caption;
   els.lightboxCounter.textContent = `${currentIndex + 1} / ${photos.length}`;
+
+  if (shouldAnimate) {
+    setLightboxPhase("in", delta);
+    await wait(360);
+    els.lightbox.removeAttribute("data-phase");
+    els.lightbox.removeAttribute("data-direction");
+  }
 }
 function closeLightbox() {
   els.lightbox.close();
   document.body.style.overflow = "";
+  resetLightboxDrag();
+  els.lightbox.removeAttribute("data-phase");
+  els.lightbox.removeAttribute("data-direction");
 }
-function moveLightbox(delta) {
+async function moveLightbox(delta) {
+  if (lightboxAnimating || photos.length < 2) return;
+  lightboxAnimating = true;
+  resetLightboxDrag();
+  playLightboxFeedback(delta);
   currentIndex = (currentIndex + delta + photos.length) % photos.length;
-  updateLightbox();
+  try {
+    await updateLightbox(delta);
+  } finally {
+    lightboxAnimating = false;
+  }
 }
 document.getElementById("lightboxClose").onclick = closeLightbox;
 document.getElementById("lightboxPrev").onclick = () => moveLightbox(-1);
@@ -650,18 +731,36 @@ els.lightbox.addEventListener("click", e => { if (e.target === els.lightbox) clo
 let lightboxTouchStartX = 0;
 let lightboxTouchStartY = 0;
 els.lightbox.addEventListener("touchstart", e => {
+  if (lightboxAnimating) return;
   const touch = e.changedTouches[0];
   lightboxTouchStartX = touch.clientX;
   lightboxTouchStartY = touch.clientY;
+  lightboxTouchDx = 0;
+  lightboxTouchDy = 0;
+  lightboxTouchDragging = false;
 }, { passive: true });
+els.lightbox.addEventListener("touchmove", e => {
+  if (lightboxAnimating || e.changedTouches.length !== 1) return;
+  const touch = e.changedTouches[0];
+  lightboxTouchDx = touch.clientX - lightboxTouchStartX;
+  lightboxTouchDy = touch.clientY - lightboxTouchStartY;
+  const horizontal = Math.abs(lightboxTouchDx) > 12 && Math.abs(lightboxTouchDx) > Math.abs(lightboxTouchDy) * 1.2;
+  if (!horizontal) return;
+  e.preventDefault();
+  lightboxTouchDragging = true;
+  setLightboxDrag(lightboxTouchDx);
+}, { passive: false });
 els.lightbox.addEventListener("touchend", e => {
   const touch = e.changedTouches[0];
-  const dx = touch.clientX - lightboxTouchStartX;
-  const dy = touch.clientY - lightboxTouchStartY;
+  const dx = lightboxTouchDx || touch.clientX - lightboxTouchStartX;
+  const dy = lightboxTouchDy || touch.clientY - lightboxTouchStartY;
   if (Math.abs(dx) > 54 && Math.abs(dx) > Math.abs(dy) * 1.35) {
     moveLightbox(dx > 0 ? -1 : 1);
+  } else if (lightboxTouchDragging) {
+    resetLightboxDrag();
   }
 }, { passive: true });
+els.lightbox.addEventListener("touchcancel", resetLightboxDrag, { passive: true });
 document.addEventListener("keydown", e => {
   if (!els.lightbox.open) return;
   if (e.key === "Escape") closeLightbox();
