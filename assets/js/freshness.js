@@ -1,5 +1,5 @@
 (function () {
-  const CURRENT_VERSION = "20260811-135413";
+  const CURRENT_VERSION = "20260811-135708";
   const VERSION_KEY = "our-story-site-version";
   const RELOAD_KEY = "our-story-site-reloaded-for-version";
 

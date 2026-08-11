@@ -643,6 +643,9 @@ function wait(ms) {
 function nextPaint() {
   return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 }
+function finishAnimation(animation) {
+  return animation.finished.catch(() => {});
+}
 function playLightboxFeedback(delta) {
   if (navigator.vibrate) navigator.vibrate(12);
   if (prefersReducedMotion()) return;
@@ -737,6 +740,79 @@ async function updateLightbox(delta = 0) {
   els.lightbox.removeAttribute("data-phase");
   els.lightbox.removeAttribute("data-direction");
 }
+async function animateLightboxTurn(delta, dragOffset = 0) {
+  const p = photos[currentIndex];
+  const nextSrc = await decryptPhotoUrl(p, "full");
+  const incoming = await decodeImage(nextSrc);
+  const width = els.lightboxImageWrap.getBoundingClientRect().width || innerWidth;
+  const direction = delta > 0 ? 1 : -1;
+  const startX = Math.max(-width * .72, Math.min(width * .72, dragOffset || 0));
+  const progress = Math.min(.82, Math.abs(startX) / (width * .72));
+  const incomingStartX = direction * width * (1.04 - progress * .58);
+  const duration = Math.max(430, 920 - progress * 310);
+  const easing = "cubic-bezier(.18,.82,.18,1)";
+
+  incoming.className = "lightbox-page lightbox-page-incoming";
+  incoming.alt = p.name;
+  incoming.style.transform = `translateX(${incomingStartX}px) scale(.98)`;
+  incoming.style.opacity = String(.36 + progress * .36);
+  els.lightboxImageWrap.appendChild(incoming);
+  els.lightboxImage.classList.add("lightbox-page-outgoing");
+  els.lightbox.dataset.phase = "turning";
+
+  const outgoing = els.lightboxImage.animate([
+    {
+      transform: `translateX(${startX}px) scale(${1 - progress * .025})`,
+      opacity: 1 - progress * .12,
+      filter: "drop-shadow(0 30px 80px rgba(62,44,36,.24))"
+    },
+    {
+      transform: `translateX(${-direction * width * 1.08}px) scale(.965)`,
+      opacity: .18,
+      filter: "drop-shadow(0 12px 28px rgba(62,44,36,.1)) brightness(.96)"
+    }
+  ], { duration, easing, fill: "forwards" });
+
+  const incomingAnimation = incoming.animate([
+    {
+      transform: `translateX(${incomingStartX}px) scale(.98)`,
+      opacity: .36 + progress * .36,
+      filter: "drop-shadow(0 14px 34px rgba(62,44,36,.12)) brightness(1.03)"
+    },
+    {
+      transform: "translateX(0) scale(1)",
+      opacity: 1,
+      filter: "drop-shadow(0 30px 80px rgba(62,44,36,.24)) brightness(1)"
+    }
+  ], { duration, easing, fill: "forwards" });
+
+  const captionAnimation = els.lightbox.querySelector("figcaption").animate([
+    { opacity: .58, transform: "translateY(6px)" },
+    { opacity: 1, transform: "translateY(0)" }
+  ], { duration, easing, fill: "both" });
+
+  await Promise.all([outgoing, incomingAnimation, captionAnimation].map(finishAnimation));
+  els.lightboxImage.src = nextSrc;
+  els.lightboxImage.alt = p.name;
+  if (els.lightboxImage.decode) {
+    try { await els.lightboxImage.decode(); }
+    catch {}
+  }
+  els.lightboxCaption.textContent = p.caption;
+  els.lightboxCounter.textContent = `${currentIndex + 1} / ${photos.length}`;
+  outgoing.cancel();
+  incomingAnimation.cancel();
+  captionAnimation.cancel();
+  els.lightboxImage.classList.remove("lightbox-page-outgoing");
+  els.lightboxImage.style.transform = "";
+  els.lightboxImage.style.opacity = "";
+  els.lightboxImage.style.filter = "";
+  els.lightboxImage.style.transformOrigin = "";
+  await nextPaint();
+  incoming.remove();
+  resetLightboxDrag();
+  els.lightbox.removeAttribute("data-phase");
+}
 function closeLightbox() {
   els.lightbox.close();
   document.body.style.overflow = "";
@@ -746,14 +822,18 @@ function closeLightbox() {
   els.lightbox.removeAttribute("data-phase");
   els.lightbox.removeAttribute("data-direction");
 }
-async function moveLightbox(delta) {
+async function moveLightbox(delta, dragOffset = 0) {
   if (lightboxAnimating || photos.length < 2) return;
   lightboxAnimating = true;
-  resetLightboxDrag();
   playLightboxFeedback(delta);
   currentIndex = (currentIndex + delta + photos.length) % photos.length;
   try {
-    await updateLightbox(delta);
+    if (delta && els.lightbox.open && !prefersReducedMotion()) {
+      await animateLightboxTurn(delta, dragOffset);
+    } else {
+      resetLightboxDrag();
+      await updateLightbox(delta);
+    }
   } finally {
     lightboxAnimating = false;
   }
@@ -789,7 +869,7 @@ els.lightbox.addEventListener("touchend", e => {
   const dx = lightboxTouchDx || touch.clientX - lightboxTouchStartX;
   const dy = lightboxTouchDy || touch.clientY - lightboxTouchStartY;
   if (Math.abs(dx) > 54 && Math.abs(dx) > Math.abs(dy) * 1.35) {
-    moveLightbox(dx > 0 ? -1 : 1);
+    moveLightbox(dx > 0 ? -1 : 1, dx);
   } else if (lightboxTouchDragging) {
     resetLightboxDrag();
   }
