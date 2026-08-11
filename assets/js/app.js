@@ -640,6 +640,9 @@ function prefersReducedMotion() {
 function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
+function nextPaint() {
+  return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+}
 function playLightboxFeedback(delta) {
   if (navigator.vibrate) navigator.vibrate(12);
   if (prefersReducedMotion()) return;
@@ -722,11 +725,15 @@ async function updateLightbox(delta = 0) {
   await wait(820);
   els.lightboxImage.src = nextSrc;
   els.lightboxImage.alt = p.name;
+  if (els.lightboxImage.decode) {
+    try { await els.lightboxImage.decode(); }
+    catch {}
+  }
   els.lightboxCaption.textContent = p.caption;
   els.lightboxCounter.textContent = `${currentIndex + 1} / ${photos.length}`;
-  await wait(40);
-  incoming.remove();
   els.lightboxImage.classList.remove("lightbox-page-outgoing");
+  await nextPaint();
+  incoming.remove();
   els.lightbox.removeAttribute("data-phase");
   els.lightbox.removeAttribute("data-direction");
 }
